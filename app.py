@@ -4,7 +4,6 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import json
-import numpy as np
 
 st.set_page_config(page_title="AEP ZIP Market Analysis", layout="wide")
 
@@ -47,7 +46,6 @@ geojson_data = load_geojson(GEOJSON_PATH)
 # --- Prepare totals ---
 zip_totals = ee_map.groupby("ZIP", as_index=False)["ESTAB"].sum()
 zip_totals["ZIP"] = zip_totals["ZIP"].astype(str).str.zfill(5)
-zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
 
 # Extract centroid coordinates for labels
 zip_centroids = {}
@@ -90,32 +88,33 @@ fig_map = px.choropleth_mapbox(
     opacity=0.3
 )
 
-# Overlay selected ZIPs with color scale
+# Overlay selected ZIPs with normal scale
 selected_totals = zip_totals[zip_totals["ZIP"].isin(final_selected_zips)]
 
 fig_map.add_trace(go.Choroplethmapbox(
     geojson=geojson_data,
     locations=selected_totals["ZIP"],
-    z=selected_totals["ESTAB_LOG"],
+    z=selected_totals["ESTAB"],   # escala normal
     featureidkey="properties.ZCTA5CE20",
     colorscale="YlOrRd",
-    marker_opacity=0.7,
+    marker_opacity=0.8,
     marker_line_width=0.5,
     text=selected_totals["ZIP"],
-    hoverinfo="text+z"
+    hovertemplate="ZIP: %{text}<br>Establishments: %{z}<extra></extra>"
 ))
 
-# Add labels for ALL ZIPs (not only selected)
+# Add labels for ALL ZIPs
 fig_map.add_trace(go.Scattermapbox(
     lon=zip_totals["lon"],
     lat=zip_totals["lat"],
     text=zip_totals["ZIP"],
     mode="text",
-    textfont=dict(size=10, color="black"),  # todos los ZIPs visibles
+    textfont=dict(size=10, color="black"),
     hoverinfo="none"
 ))
 
-st.plotly_chart(fig_map, use_container_width=True, height=700)
+# Bigger map
+st.plotly_chart(fig_map, use_container_width=True, height=900)
 
 # --- Top 5 sectors ---
 st.subheader(f"🏆 Top 5 sectors in selected ZIPs ({len(final_selected_zips)})")

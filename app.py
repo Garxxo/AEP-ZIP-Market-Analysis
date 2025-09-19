@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import json
+import numpy as np
 
 st.set_page_config(page_title="AEP ZIP Market Analysis", layout="wide")
 
@@ -22,6 +23,7 @@ def load_data(path: str):
         if "ESTAB" in df.columns:
             df["ESTAB"] = pd.to_numeric(df["ESTAB"], errors="coerce").fillna(0).astype(int)
 
+    # Extract clean ZIP
     ee_map["ZIP"] = ee_map["NAME"].str.extract(r"(\d{5})")
     return pivot, top5, ee_map
 
@@ -39,21 +41,21 @@ geojson_data = load_geojson()
 # --- Sidebar filters ---
 st.sidebar.header("Filters")
 
-all_zips = sorted(ee_map["ZIP"].dropna().unique())
+all_names = sorted(ee_map["NAME"].dropna().unique())
 
 select_all = st.sidebar.checkbox("Select/Deselect all ZIPs", value=False)
 
 if select_all:
-    zips_selected = st.sidebar.multiselect("Choose ZIP Codes", all_zips, default=all_zips)
+    names_selected = st.sidebar.multiselect("Choose ZIP Codes", all_names, default=all_names)
 else:
-    zips_selected = st.sidebar.multiselect("Choose ZIP Codes", all_zips, default=[])
+    names_selected = st.sidebar.multiselect("Choose ZIP Codes", all_names, default=[])
 
-if not zips_selected:
+if not names_selected:
     st.warning("Please select at least one ZIP Code from the sidebar.")
 else:
     # --- Multi-ZIP comparison ---
     st.subheader("📊 Multi-ZIP comparison")
-    multi_data = ee_map[ee_map["ZIP"].isin(zips_selected)]
+    multi_data = ee_map[ee_map["NAME"].isin(names_selected)]
     sector_totals_multi = (multi_data.groupby("NAICS2017_LABEL", as_index=False)["ESTAB"].sum()
                            .sort_values("ESTAB", ascending=False))
 
@@ -61,7 +63,7 @@ else:
         sector_totals_multi.head(10).sort_values("ESTAB"),
         x="ESTAB", y="NAICS2017_LABEL",
         orientation="h", text="ESTAB",
-        title=f"Top sectors across selected ZIPs ({len(zips_selected)} total)"
+        title=f"Top sectors across selected ZIPs ({len(names_selected)} total)"
     )
     st.plotly_chart(fig_multi, use_container_width=True)
 
@@ -71,27 +73,34 @@ else:
     # --- Interactive Map ---
     st.subheader("🗺️ Map view – Establishments by ZIP")
 
+    # Aggregate totals by ZIP
     zip_totals = multi_data.groupby("ZIP", as_index=False)["ESTAB"].sum()
-    zip_totals["ZIP"] = zip_totals["ZIP"].astype(str)
+    zip_totals["ZIP"] = zip_totals["ZIP"].astype(str).str.zfill(5)
 
-    # Ensure GeoJSON ZIP_CODE is string
+    # Ensure GeoJSON ZIP_CODE is string and 5 digits
     for feature in geojson_data["features"]:
-        feature["properties"]["ZIP_CODE"] = str(feature["properties"]["ZIP_CODE"])
+        feature["properties"]["ZIP_CODE"] = str(feature["properties"]["ZIP_CODE"]).zfill(5)
+
+    # Add log scale for color
+    zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
 
     fig_map = px.choropleth_mapbox(
         zip_totals,
         geojson=geojson_data,
         locations="ZIP",
         featureidkey="properties.ZIP_CODE",
-        color="ESTAB",
+        color="ESTAB_LOG",
         hover_name="ZIP",
+        hover_data={"ESTAB": True, "ESTAB_LOG": False},
+        color_continuous_scale="Viridis",
         mapbox_style="carto-positron",
         center={"lat": 37.5, "lon": -79},
         zoom=6,
         opacity=0.6,
-        title="Total establishments by ZIP"
+        title="Total establishments by ZIP (log scale)"
     )
-    st.plotly_chart(fig_map, use_container_width=True)
+
+    st.plotly_chart(fig_map, use_container_width=True, height=700)
 
 # --- Footer ---
 with st.expander("ℹ️ About this app"):
@@ -100,8 +109,8 @@ with st.expander("ℹ️ About this app"):
     Provide Appalachian Power with a market sizing tool by ZIP code in Virginia.  
 
     **Features:**  
-    - Select one or multiple ZIPs in the sidebar.  
+    - Select one or multiple ZIPs in the sidebar (with Select/Deselect all option).  
     - Compare top sectors and see aggregated tables.  
-    - Interactive choropleth map with establishments per ZIP.  
+    - Interactive choropleth map with establishments per ZIP (logarithmic scale).  
     - Replace Excel or GeoJSON file to refresh the data.  
     """)

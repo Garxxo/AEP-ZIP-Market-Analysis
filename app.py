@@ -68,7 +68,12 @@ fig_map = px.choropleth_mapbox(
 )
 
 selected_points = plotly_events(fig_map, click_event=True, select_event=True)
-selected_zips_map = [p["location"] for p in selected_points] if selected_points else []
+
+if selected_points:
+    selected_indices = [p["pointIndex"] for p in selected_points if "pointIndex" in p]
+    selected_zips_map = zip_totals.iloc[selected_indices]["ZIP"].tolist()
+else:
+    selected_zips_map = []
 
 st.plotly_chart(fig_map, use_container_width=True, height=700)
 
@@ -160,3 +165,4 @@ with st.expander("ℹ️ About this app"):
     - Heatmap-style table with option to export CSV.  
     - Interactive choropleth map with establishments per ZIP (logarithmic scale).  
     """)
+

@@ -30,15 +30,16 @@ def load_data(path: str):
 pivot, top5, ee_map = load_data(FILE_PATH)
 
 # --- Clean and validate ZIP codes from Excel ---
-# Eliminar filas sin ZIP
 ee_map = ee_map.dropna(subset=["ZIP"]).copy()
-
-# Asegurar que sean strings de 5 dígitos
 ee_map["ZIP"] = ee_map["ZIP"].astype(str).str.zfill(5)
 
 # Filtrar solo Virginia (prefijos 201xx, 220xx–246xx)
 va_prefixes = tuple(str(i) for i in range(201, 247))
 ee_map = ee_map[ee_map["ZIP"].str[:3].isin(va_prefixes)].copy()
+
+# --- Debug prints ---
+st.write("🔍 Preview of cleaned ZIPs:", ee_map[["NAME", "ZIP"]].head(20))
+st.write("✅ Total valid Virginia ZIPs in Excel:", ee_map["ZIP"].nunique())
 
 # --- Load GeoJSON simplified ---
 @st.cache_data(show_spinner=True)
@@ -91,12 +92,17 @@ else:
     for feature in geojson_data["features"]:
         feature["properties"]["ZIP_CODE"] = str(feature["properties"]["ZIP_CODE"]).zfill(5)
 
+    # Debug para ver valores
+    st.write("🔍 Sample ZIPs in DataFrame:", zip_totals["ZIP"].unique()[:20])
+    st.write("🔍 Sample ZIPs in GeoJSON:", [f["properties"]["ZIP_CODE"] for f in geojson_data["features"][:20]])
+
     # Filtrar GeoJSON solo a los ZIPs seleccionados
     valid_zips = set(zip_totals["ZIP"])
     geojson_data["features"] = [
         f for f in geojson_data["features"]
         if f["properties"]["ZIP_CODE"] in valid_zips
     ]
+    st.write(f"✅ ZIPs in DataFrame: {len(valid_zips)} | ZIPs in GeoJSON after filter: {len(geojson_data['features'])}")
 
     # Escala logarítmica
     zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])

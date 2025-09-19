@@ -84,11 +84,11 @@ fig_map.add_trace(go.Scattermapbox(
     lat=zip_totals["lat"],
     text=zip_totals["ZIP"],
     mode="text",
-    textfont=dict(size=10, color="black"),
+    textfont=dict(size=11, color="black"),  # ZIPs más visibles
     hoverinfo="none"
 ))
 
-# Capture clicks
+# Capture clicks on the map
 selected_points = plotly_events(fig_map, click_event=True, select_event=True)
 
 if "selected_zips" not in st.session_state:

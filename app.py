@@ -88,7 +88,7 @@ fig_map = px.choropleth_mapbox(
     opacity=0.3
 )
 
-# Overlay selected ZIPs with normal scale
+# Overlay selected ZIPs with normal scale and global min/max
 selected_totals = zip_totals[zip_totals["ZIP"].isin(final_selected_zips)]
 
 fig_map.add_trace(go.Choroplethmapbox(
@@ -97,10 +97,13 @@ fig_map.add_trace(go.Choroplethmapbox(
     z=selected_totals["ESTAB"],   # escala normal
     featureidkey="properties.ZCTA5CE20",
     colorscale="YlOrRd",
+    zmin=zip_totals["ESTAB"].min(),
+    zmax=zip_totals["ESTAB"].max(),
     marker_opacity=0.8,
     marker_line_width=0.5,
     text=selected_totals["ZIP"],
-    hovertemplate="ZIP: %{text}<br>Establishments: %{z}<extra></extra>"
+    hovertemplate="ZIP: %{text}<br>Establishments: %{z}<extra></extra>",
+    colorbar=dict(title="Establishments")
 ))
 
 # Add labels for ALL ZIPs
@@ -110,7 +113,8 @@ fig_map.add_trace(go.Scattermapbox(
     text=zip_totals["ZIP"],
     mode="text",
     textfont=dict(size=10, color="black"),
-    hoverinfo="none"
+    hoverinfo="none",
+    showlegend=False  # evita que aparezca "trace 2"
 ))
 
 # Bigger map

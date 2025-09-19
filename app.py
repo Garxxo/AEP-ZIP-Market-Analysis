@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import geopandas as gpd
+import json
 
 st.set_page_config(page_title="AEP ZIP Market Analysis", layout="wide")
 
@@ -19,27 +18,25 @@ def load_data(path: str):
     top5 = pd.read_excel(path, sheet_name="Top5 by ZIP")
     ee_map = pd.read_excel(path, sheet_name="With EE Mapping")
 
-    # Convert numeric columns
+    # Convert numeric
     for df in (pivot, top5, ee_map):
         if "ESTAB" in df.columns:
             df["ESTAB"] = pd.to_numeric(df["ESTAB"], errors="coerce").fillna(0).astype(int)
 
-    # Extract clean ZIP code from NAME field
+    # Extract clean ZIP
     ee_map["ZIP"] = ee_map["NAME"].str.extract(r"(\d{5})")
-
     return pivot, top5, ee_map
 
 pivot, top5, ee_map = load_data(FILE_PATH)
 
-# --- Load shapefile of Virginia ZIP Codes ---
+# --- Load GeoJSON simplified ---
 @st.cache_data(show_spinner=True)
-def load_shapes():
-    shp_path = "VA_Zip_Codes.zip"  # must be in repo root
-    gdf = gpd.read_file(f"zip://{shp_path}!VA_Zip_Codes.shp")
-    gdf["ZIP_CODE"] = gdf["ZIP_CODE"].astype(str)
-    return gdf
+def load_geojson():
+    with open("VA_Zip_Codes_VA.geojson", "r") as f:
+        geojson = json.load(f)
+    return geojson
 
-shapes = load_shapes()
+geojson_data = load_geojson()
 
 # --- Sidebar filters ---
 st.sidebar.header("Filters")
@@ -62,7 +59,7 @@ if not top5_zip.empty:
     )
     st.plotly_chart(fig_top5, use_container_width=True)
 
-# Pie chart of all sectors
+# Pie chart
 if not zip_data.empty:
     fig_pie = px.pie(
         zip_data, names="NAICS2017_LABEL", values="ESTAB",
@@ -75,7 +72,7 @@ if not zip_data.empty:
                  .sort_values("ESTAB", ascending=False),
                  use_container_width=True)
 
-# --- Multi ZIP comparison ---
+# --- Multi-ZIP comparison ---
 st.subheader("📊 Multi-ZIP comparison")
 if multi_zips:
     multi_data = ee_map[ee_map["NAME"].isin(multi_zips)]
@@ -110,22 +107,17 @@ st.dataframe(pivot.set_index("NAME"), use_container_width=True)
 # --- Interactive Map ---
 st.subheader("🗺️ Map view – Establishments by ZIP")
 
-# Aggregate totals by ZIP for map
 zip_totals = ee_map.groupby("ZIP", as_index=False)["ESTAB"].sum()
 
-# Merge shapefile with business data
-map_gdf = shapes.merge(zip_totals, left_on="ZIP_CODE", right_on="ZIP", how="inner")
-
-# Plot choropleth
 fig_map = px.choropleth_mapbox(
-    map_gdf,
-    geojson=map_gdf.geometry.__geo_interface__,
-    locations=map_gdf.index,
+    zip_totals,
+    geojson=geojson_data,
+    locations="ZIP",
+    featureidkey="properties.ZIP_CODE",
     color="ESTAB",
-    hover_name="ZIP_CODE",
-    hover_data={"ESTAB": True},
+    hover_name="ZIP",
     mapbox_style="carto-positron",
-    center={"lat": 37.5, "lon": -79},  # approximate Virginia center
+    center={"lat": 37.5, "lon": -79},
     zoom=6,
     opacity=0.6,
     title="Total establishments by ZIP"
@@ -158,4 +150,5 @@ with st.expander("ℹ️ About this app"):
     - Use the sidebar to select one or multiple ZIPs.  
     - Charts update automatically.  
     - Replace `AEP_Zips_Processed.xlsx` in the repo to refresh data.  
+    - Replace `VA_Zip_Codes_VA.geojson` if updated boundaries are needed.  
     """)

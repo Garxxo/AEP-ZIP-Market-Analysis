@@ -23,11 +23,22 @@ def load_data(path: str):
         if "ESTAB" in df.columns:
             df["ESTAB"] = pd.to_numeric(df["ESTAB"], errors="coerce").fillna(0).astype(int)
 
-    # Extract clean ZIP
+    # Extraer ZIP desde NAME
     ee_map["ZIP"] = ee_map["NAME"].str.extract(r"(\d{5})")
     return pivot, top5, ee_map
 
 pivot, top5, ee_map = load_data(FILE_PATH)
+
+# --- Clean and validate ZIP codes from Excel ---
+# Eliminar filas sin ZIP
+ee_map = ee_map.dropna(subset=["ZIP"]).copy()
+
+# Asegurar que sean strings de 5 dígitos
+ee_map["ZIP"] = ee_map["ZIP"].astype(str).str.zfill(5)
+
+# Filtrar solo Virginia (prefijos 201xx, 220xx–246xx)
+va_prefixes = tuple(str(i) for i in range(201, 247))
+ee_map = ee_map[ee_map["ZIP"].str[:3].isin(va_prefixes)].copy()
 
 # --- Load GeoJSON simplified ---
 @st.cache_data(show_spinner=True)
@@ -42,7 +53,6 @@ geojson_data = load_geojson()
 st.sidebar.header("Filters")
 
 all_names = sorted(ee_map["NAME"].dropna().unique())
-
 select_all = st.sidebar.checkbox("Select/Deselect all ZIPs", value=False)
 
 if select_all:
@@ -71,52 +81,43 @@ else:
     st.dataframe(sector_totals_multi, use_container_width=True)
 
     # --- Interactive Map ---
-st.subheader("🗺️ Map view – Establishments by ZIP")
+    st.subheader("🗺️ Map view – Establishments by ZIP")
 
-# Aggregate totals by ZIP
-zip_totals = multi_data.groupby("ZIP", as_index=False)["ESTAB"].sum()
+    # Aggregate totals by ZIP
+    zip_totals = multi_data.groupby("ZIP", as_index=False)["ESTAB"].sum()
+    zip_totals["ZIP"] = zip_totals["ZIP"].astype(str).str.zfill(5)
 
-# Forzar a string con 5 dígitos
-zip_totals["ZIP"] = zip_totals["ZIP"].astype(str).str.zfill(5)
+    # Forzar GeoJSON a string con 5 dígitos
+    for feature in geojson_data["features"]:
+        feature["properties"]["ZIP_CODE"] = str(feature["properties"]["ZIP_CODE"]).zfill(5)
 
-# Forzar GeoJSON a string con 5 dígitos
-for feature in geojson_data["features"]:
-    feature["properties"]["ZIP_CODE"] = str(feature["properties"]["ZIP_CODE"]).zfill(5)
+    # Filtrar GeoJSON solo a los ZIPs seleccionados
+    valid_zips = set(zip_totals["ZIP"])
+    geojson_data["features"] = [
+        f for f in geojson_data["features"]
+        if f["properties"]["ZIP_CODE"] in valid_zips
+    ]
 
-# Debug: ver ejemplos de valores en ambos lados
-st.write("🔍 Sample ZIPs in DataFrame:", zip_totals["ZIP"].unique()[:10])
-st.write("🔍 Sample ZIPs in GeoJSON:", [f["properties"]["ZIP_CODE"] for f in geojson_data["features"][:10]])
+    # Escala logarítmica
+    zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
 
-# --- Filtrar GeoJSON a solo ZIPs que existan en el DataFrame ---
-valid_zips = set(zip_totals["ZIP"])
-geojson_data["features"] = [
-    f for f in geojson_data["features"]
-    if f["properties"]["ZIP_CODE"] in valid_zips
-]
+    fig_map = px.choropleth_mapbox(
+        zip_totals,
+        geojson=geojson_data,
+        locations="ZIP",
+        featureidkey="properties.ZIP_CODE",
+        color="ESTAB_LOG",
+        hover_name="ZIP",
+        hover_data={"ESTAB": True, "ESTAB_LOG": False},
+        color_continuous_scale="Viridis",
+        mapbox_style="carto-positron",
+        center={"lat": 37.5, "lon": -79},
+        zoom=6,
+        opacity=0.6,
+        title="Total establishments by ZIP (log scale)"
+    )
 
-st.write(f"✅ ZIPs in DataFrame: {len(valid_zips)} | ZIPs in GeoJSON after filter: {len(geojson_data['features'])}")
-
-# Log scale
-zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
-
-# Choropleth
-fig_map = px.choropleth_mapbox(
-    zip_totals,
-    geojson=geojson_data,
-    locations="ZIP",
-    featureidkey="properties.ZIP_CODE",
-    color="ESTAB_LOG",
-    hover_name="ZIP",
-    hover_data={"ESTAB": True, "ESTAB_LOG": False},
-    color_continuous_scale="Viridis",
-    mapbox_style="carto-positron",
-    center={"lat": 37.5, "lon": -79},
-    zoom=6,
-    opacity=0.6,
-    title="Total establishments by ZIP (log scale)"
-)
-
-st.plotly_chart(fig_map, use_container_width=True, height=700)
+    st.plotly_chart(fig_map, use_container_width=True, height=700)
 
 # --- Footer ---
 with st.expander("ℹ️ About this app"):

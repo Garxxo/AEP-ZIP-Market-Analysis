@@ -23,19 +23,30 @@ def load_data(path: str):
         if "ESTAB" in df.columns:
             df["ESTAB"] = pd.to_numeric(df["ESTAB"], errors="coerce").fillna(0).astype(int)
 
-    # Extraer ZIP desde NAME
-    ee_map["ZIP"] = ee_map["NAME"].str.extract(r"(\d{5})")
     return pivot, top5, ee_map
 
 pivot, top5, ee_map = load_data(FILE_PATH)
 
 # --- Clean and validate ZIP codes from Excel ---
-ee_map = ee_map.dropna(subset=["ZIP"]).copy()
+ee_map = ee_map.dropna(subset=["NAME"]).copy()
+
+# Intentar extraer 5 dígitos seguidos
+ee_map["ZIP"] = ee_map["NAME"].str.extract(r"(\d{5})")
+
+# Si no encuentra, limpiar no-dígitos y tomar primeros 5
+ee_map["ZIP"] = ee_map["ZIP"].fillna(
+    ee_map["NAME"].str.replace(r"\D", "", regex=True).str[:5]
+)
+
+# Asegurar formato string de 5 dígitos
 ee_map["ZIP"] = ee_map["ZIP"].astype(str).str.zfill(5)
 
 # Filtrar solo Virginia (prefijos 201xx, 220xx–246xx)
 va_prefixes = tuple(str(i) for i in range(201, 247))
 ee_map = ee_map[ee_map["ZIP"].str[:3].isin(va_prefixes)].copy()
+
+# Debug preview ZIPs
+st.write("🔍 Preview cleaned ZIPs:", ee_map[["NAME", "ZIP"]].head(20))
 
 # --- Load GeoJSON simplified ---
 @st.cache_data(show_spinner=True)
@@ -63,7 +74,7 @@ else:
     # --- Multi-ZIP comparison ---
     st.subheader("📊 Multi-ZIP comparison")
 
-    # Convertir directamente a ZIP desde los nombres seleccionados
+    # Convertir nombres seleccionados a ZIPs
     selected_zips = ee_map.loc[ee_map["NAME"].isin(names_selected), "ZIP"].dropna().unique()
     if len(selected_zips) == 0:
         st.error("⚠️ No ZIP codes found for the selected entries. Check Excel column NAME vs sidebar.")

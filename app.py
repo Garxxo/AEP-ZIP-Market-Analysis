@@ -37,10 +37,6 @@ ee_map["ZIP"] = ee_map["ZIP"].astype(str).str.zfill(5)
 va_prefixes = tuple(str(i) for i in range(201, 247))
 ee_map = ee_map[ee_map["ZIP"].str[:3].isin(va_prefixes)].copy()
 
-# --- Debug prints ---
-st.write("🔍 Preview of cleaned ZIPs:", ee_map[["NAME", "ZIP"]].head(20))
-st.write("✅ Total valid Virginia ZIPs in Excel:", ee_map["ZIP"].nunique())
-
 # --- Load GeoJSON simplified ---
 @st.cache_data(show_spinner=True)
 def load_geojson():
@@ -88,28 +84,25 @@ else:
     zip_totals = multi_data.groupby("ZIP", as_index=False)["ESTAB"].sum()
     zip_totals["ZIP"] = zip_totals["ZIP"].astype(str).str.zfill(5)
 
-    # Forzar GeoJSON a string con 5 dígitos
+    # Crear copia del GeoJSON para no modificar el original
+    geojson_copy = {"type": geojson_data["type"], "features": []}
     for feature in geojson_data["features"]:
-        feature["properties"]["ZIP_CODE"] = str(feature["properties"]["ZIP_CODE"]).zfill(5)
+        f = feature.copy()
+        f["properties"]["ZIP_CODE"] = str(f["properties"]["ZIP_CODE"]).zfill(5)
+        geojson_copy["features"].append(f)
 
-    # Debug para ver valores
-    st.write("🔍 Sample ZIPs in DataFrame:", zip_totals["ZIP"].unique()[:20])
-    st.write("🔍 Sample ZIPs in GeoJSON:", [f["properties"]["ZIP_CODE"] for f in geojson_data["features"][:20]])
-
-    # Filtrar GeoJSON solo a los ZIPs seleccionados
+    # Filtrar ZIPs presentes en el DataFrame
     valid_zips = set(zip_totals["ZIP"])
-    geojson_data["features"] = [
-        f for f in geojson_data["features"]
-        if f["properties"]["ZIP_CODE"] in valid_zips
+    geojson_copy["features"] = [
+        f for f in geojson_copy["features"] if f["properties"]["ZIP_CODE"] in valid_zips
     ]
-    st.write(f"✅ ZIPs in DataFrame: {len(valid_zips)} | ZIPs in GeoJSON after filter: {len(geojson_data['features'])}")
 
     # Escala logarítmica
     zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
 
     fig_map = px.choropleth_mapbox(
         zip_totals,
-        geojson=geojson_data,
+        geojson=geojson_copy,
         locations="ZIP",
         featureidkey="properties.ZIP_CODE",
         color="ESTAB_LOG",

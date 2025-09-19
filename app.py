@@ -98,6 +98,20 @@ else:
         f["properties"]["ZIP_CODE"] = str(f["properties"]["ZIP_CODE"]).zfill(5)
         geojson_copy["features"].append(f)
 
+    # --- Validaciones antes de pintar ---
+    st.write("📊 ZIPs in zip_totals:", zip_totals["ZIP"].unique()[:20])
+    st.write("🌍 ZIPs in geojson_copy:", [f["properties"]["ZIP_CODE"] for f in geojson_copy["features"][:20]])
+
+    merged_check = pd.merge(
+        zip_totals,
+        pd.DataFrame([f["properties"] for f in geojson_copy["features"]]),
+        left_on="ZIP",
+        right_on="ZIP_CODE",
+        how="outer",
+        indicator=True
+    )
+    st.write("🔎 Merge check sample:", merged_check.head(20))
+
     # Filtrar ZIPs presentes en el DataFrame
     valid_zips = set(zip_totals["ZIP"])
     geojson_copy["features"] = [
@@ -107,6 +121,7 @@ else:
     # Escala logarítmica
     zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
 
+    # Mapa
     fig_map = px.choropleth_mapbox(
         zip_totals,
         geojson=geojson_copy,
@@ -115,7 +130,7 @@ else:
         color="ESTAB_LOG",
         hover_name="ZIP",
         hover_data={"ESTAB": True, "ESTAB_LOG": False},
-        color_continuous_scale="Viridis",
+        color_continuous_scale="YlOrRd",
         mapbox_style="carto-positron",
         center={"lat": 37.5, "lon": -79},
         zoom=6,
@@ -134,6 +149,6 @@ with st.expander("ℹ️ About this app"):
     **Features:**  
     - Select one or multiple ZIPs in the sidebar (with Select/Deselect all option).  
     - Compare top sectors and see aggregated tables.  
-    - Interactive choropleth map with establishments per ZIP (logarithmic scale).  
+    - Interactive choropleth map with establishments per ZIP (logarithmic scale, yellow → red).  
     - Replace Excel or GeoJSON file to refresh the data.  
     """)

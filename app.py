@@ -99,6 +99,15 @@ else:
 
     # Escala logarítmica
     zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
+    # --- Debug: revisar propiedades del GeoJSON y ZIPs ---
+    st.write("🔑 Keys in GeoJSON properties:", geojson_data["features"][0]["properties"].keys())
+
+    # Ver primeros 10 ZIPs del DataFrame
+    st.write("📊 First 10 ZIPs in DataFrame:", zip_totals["ZIP"].unique()[:10])
+
+    # Ver primeros 10 valores de la propiedad ZIP en el GeoJSON
+    sample_geo = [f["properties"] for f in geojson_data["features"][:10]]
+    st.write("🌍 First 10 features in GeoJSON:", sample_geo)
 
     fig_map = px.choropleth_mapbox(
         zip_totals,

@@ -116,7 +116,7 @@ else:
         title="Total establishments by ZIP (log scale)"
     )
 
-    st.plotly_chart(fig_map, use_container_width=True, height=700)
+    st.plotly_chart(fig_map, use_container_width=True, height=1400)
 
 # --- Footer ---
 with st.expander("ℹ️ About this app"):

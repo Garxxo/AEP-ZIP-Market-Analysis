@@ -71,36 +71,44 @@ else:
     st.dataframe(sector_totals_multi, use_container_width=True)
 
     # --- Interactive Map ---
-    st.subheader("🗺️ Map view – Establishments by ZIP")
+    # --- Interactive Map ---
+st.subheader("🗺️ Map view – Establishments by ZIP")
 
-    # Aggregate totals by ZIP
-    zip_totals = multi_data.groupby("ZIP", as_index=False)["ESTAB"].sum()
-    zip_totals["ZIP"] = zip_totals["ZIP"].astype(str).str.zfill(5)
+# Aggregate totals by ZIP
+zip_totals = multi_data.groupby("ZIP", as_index=False)["ESTAB"].sum()
 
-    # Ensure GeoJSON ZIP_CODE is string and 5 digits
-    for feature in geojson_data["features"]:
-        feature["properties"]["ZIP_CODE"] = str(feature["properties"]["ZIP_CODE"]).zfill(5)
+# Forzar a string con 5 dígitos
+zip_totals["ZIP"] = zip_totals["ZIP"].astype(str).str.zfill(5)
 
-    # Add log scale for color
-    zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
+# Forzar GeoJSON a string con 5 dígitos
+for feature in geojson_data["features"]:
+    feature["properties"]["ZIP_CODE"] = str(feature["properties"]["ZIP_CODE"]).zfill(5)
 
-    fig_map = px.choropleth_mapbox(
-        zip_totals,
-        geojson=geojson_data,
-        locations="ZIP",
-        featureidkey="properties.ZIP_CODE",
-        color="ESTAB_LOG",
-        hover_name="ZIP",
-        hover_data={"ESTAB": True, "ESTAB_LOG": False},
-        color_continuous_scale="Viridis",
-        mapbox_style="carto-positron",
-        center={"lat": 37.5, "lon": -79},
-        zoom=6,
-        opacity=0.6,
-        title="Total establishments by ZIP (log scale)"
-    )
+# Debug: ver ejemplos de valores en ambos lados
+st.write("🔍 Sample ZIPs in DataFrame:", zip_totals["ZIP"].unique()[:10])
+st.write("🔍 Sample ZIPs in GeoJSON:", [f["properties"]["ZIP_CODE"] for f in geojson_data["features"][:10]])
 
-    st.plotly_chart(fig_map, use_container_width=True, height=700)
+# Log scale
+zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
+
+# Choropleth
+fig_map = px.choropleth_mapbox(
+    zip_totals,
+    geojson=geojson_data,
+    locations="ZIP",
+    featureidkey="properties.ZIP_CODE",
+    color="ESTAB_LOG",
+    hover_name="ZIP",
+    hover_data={"ESTAB": True, "ESTAB_LOG": False},
+    color_continuous_scale="Viridis",
+    mapbox_style="carto-positron",
+    center={"lat": 37.5, "lon": -79},
+    zoom=6,
+    opacity=0.6,
+    title="Total establishments by ZIP (log scale)"
+)
+
+st.plotly_chart(fig_map, use_container_width=True, height=700)
 
 # --- Footer ---
 with st.expander("ℹ️ About this app"):

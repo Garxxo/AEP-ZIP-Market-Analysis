@@ -107,14 +107,12 @@ with st.expander("ℹ️ About this app"):
 
 import geopandas as gpd
 
-# --- Load shapefile of ZCTAs (once, cached) ---
 @st.cache_data(show_spinner=True)
 def load_shapes():
-    # Puedes bajar un shapefile de TIGER/Line ZIP Code Tabulation Areas
-    # Ejemplo: tl_2023_us_zcta520.zip
-    shp_path = "VA_Zip_Codes.zip"  # ponlo en tu repo
-    gdf = gpd.read_file(shp_path)
-    gdf["ZCTA5CE20"] = gdf["ZCTA5CE20"].astype(str)
+    shp_path = "VA_Zip_Codes.zip"  # el ZIP que subiste al repo
+    gdf = gpd.read_file(f"zip://{shp_path}")  # leer shapefile desde ZIP
+    # asegúrate de que la columna de ZIP sea string
+    gdf["ZIP"] = gdf["ZIP"].astype(str)
     return gdf
 
 shapes = load_shapes()

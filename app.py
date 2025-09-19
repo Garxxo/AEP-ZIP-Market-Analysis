@@ -71,7 +71,6 @@ else:
     st.dataframe(sector_totals_multi, use_container_width=True)
 
     # --- Interactive Map ---
-    # --- Interactive Map ---
 st.subheader("🗺️ Map view – Establishments by ZIP")
 
 # Aggregate totals by ZIP
@@ -87,6 +86,15 @@ for feature in geojson_data["features"]:
 # Debug: ver ejemplos de valores en ambos lados
 st.write("🔍 Sample ZIPs in DataFrame:", zip_totals["ZIP"].unique()[:10])
 st.write("🔍 Sample ZIPs in GeoJSON:", [f["properties"]["ZIP_CODE"] for f in geojson_data["features"][:10]])
+
+# --- Filtrar GeoJSON a solo ZIPs que existan en el DataFrame ---
+valid_zips = set(zip_totals["ZIP"])
+geojson_data["features"] = [
+    f for f in geojson_data["features"]
+    if f["properties"]["ZIP_CODE"] in valid_zips
+]
+
+st.write(f"✅ ZIPs in DataFrame: {len(valid_zips)} | ZIPs in GeoJSON after filter: {len(geojson_data['features'])}")
 
 # Log scale
 zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])

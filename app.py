@@ -88,7 +88,7 @@ fig_map.add_trace(go.Scattermapbox(
     hoverinfo="none"
 ))
 
-# Capture clicks on the map
+# 👇 ESTA es la única llamada al mapa (ya no hay st.plotly_chart duplicado)
 selected_points = plotly_events(fig_map, click_event=True, select_event=True)
 
 if "selected_zips" not in st.session_state:
@@ -99,8 +99,6 @@ if selected_points:
     new_zips = zip_totals.iloc[selected_indices]["ZIP"].tolist()
     st.session_state["selected_zips"].extend(new_zips)
     st.session_state["selected_zips"] = list(set(st.session_state["selected_zips"]))  # únicos
-
-st.plotly_chart(fig_map, use_container_width=True, height=700)
 
 # --- Sidebar filters (synchronized) ---
 st.sidebar.header("Filters")

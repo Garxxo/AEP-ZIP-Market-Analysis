@@ -62,15 +62,22 @@ if not names_selected:
 else:
     # --- Multi-ZIP comparison ---
     st.subheader("📊 Multi-ZIP comparison")
-    multi_data = ee_map[ee_map["NAME"].isin(names_selected)]
-    sector_totals_multi = (multi_data.groupby("NAICS2017_LABEL", as_index=False)["ESTAB"].sum()
-                           .sort_values("ESTAB", ascending=False))
+
+    # Convertir nombres seleccionados a ZIPs y filtrar
+    selected_zips = ee_map.loc[ee_map["NAME"].isin(names_selected), "ZIP"].unique()
+    multi_data = ee_map[ee_map["ZIP"].isin(selected_zips)]
+
+    # Tabla de sectores agregados
+    sector_totals_multi = (
+        multi_data.groupby("NAICS2017_LABEL", as_index=False)["ESTAB"].sum()
+        .sort_values("ESTAB", ascending=False)
+    )
 
     fig_multi = px.bar(
         sector_totals_multi.head(10).sort_values("ESTAB"),
         x="ESTAB", y="NAICS2017_LABEL",
         orientation="h", text="ESTAB",
-        title=f"Top sectors across selected ZIPs ({len(names_selected)} total)"
+        title=f"Top sectors across selected ZIPs ({len(selected_zips)} total)"
     )
     st.plotly_chart(fig_multi, use_container_width=True)
 
@@ -99,15 +106,6 @@ else:
 
     # Escala logarítmica
     zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
-    # --- Debug: revisar propiedades del GeoJSON y ZIPs ---
-    st.write("🔑 Keys in GeoJSON properties:", geojson_data["features"][0]["properties"].keys())
-
-    # Ver primeros 10 ZIPs del DataFrame
-    st.write("📊 First 10 ZIPs in DataFrame:", zip_totals["ZIP"].unique()[:10])
-
-    # Ver primeros 10 valores de la propiedad ZIP en el GeoJSON
-    sample_geo = [f["properties"] for f in geojson_data["features"][:10]]
-    st.write("🌍 First 10 features in GeoJSON:", sample_geo)
 
     fig_map = px.choropleth_mapbox(
         zip_totals,
@@ -125,7 +123,7 @@ else:
         title="Total establishments by ZIP (log scale)"
     )
 
-    st.plotly_chart(fig_map, use_container_width=True, height=1400)
+    st.plotly_chart(fig_map, use_container_width=True, height=700)
 
 # --- Footer ---
 with st.expander("ℹ️ About this app"):

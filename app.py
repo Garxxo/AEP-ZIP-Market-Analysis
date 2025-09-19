@@ -85,6 +85,9 @@ if not len(final_selected_zips):
     st.warning("Please select at least one ZIP from the sidebar.")
     st.stop()
 
+# --- Definir multi_data con los seleccionados ---
+multi_data = ee_map[ee_map["ZIP"].isin(final_selected_zips)]
+
 # --- Map view ---
 st.subheader("🗺️ Map – Selected ZIPs highlighted")
 
@@ -198,7 +201,7 @@ with st.expander("ℹ️ About this app"):
     Provide Appalachian Power with a market sizing tool by ZIP code in Virginia.  
 
     **Features:**  
-    - Highlight ZIPs by selecting them in the sidebar.  
+    - Highlight ZIPs by selecting them in the sidebar (option to select/deselect all).  
     - Map shows all ZIPs in gray, with selected ZIPs highlighted in color.  
     - ZIP numbers are printed on the map for easy reference.  
     - Compare top sectors and see aggregated tables.  

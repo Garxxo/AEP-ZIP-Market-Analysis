@@ -105,13 +105,13 @@ fig_map.add_trace(go.Choroplethmapbox(
     hoverinfo="text+z"
 ))
 
-# Add labels with ZIP codes
+# Add labels for ALL ZIPs (not only selected)
 fig_map.add_trace(go.Scattermapbox(
-    lon=selected_totals["lon"],
-    lat=selected_totals["lat"],
-    text=selected_totals["ZIP"],
+    lon=zip_totals["lon"],
+    lat=zip_totals["lat"],
+    text=zip_totals["ZIP"],
     mode="text",
-    textfont=dict(size=12, color="black"),  # larger and clear labels
+    textfont=dict(size=10, color="black"),  # todos los ZIPs visibles
     hoverinfo="none"
 ))
 

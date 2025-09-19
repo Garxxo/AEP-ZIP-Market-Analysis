@@ -152,13 +152,18 @@ st.plotly_chart(fig_top5, use_container_width=True)
 
 # --- Sector distribution pie ---
 st.subheader(f"🥧 Sector distribution in selected ZIPs ({len(final_selected_zips)})")
+
+# Excluir "Total for all sectors"
 sector_totals = (
-    multi_data.groupby("NAICS2017_LABEL", as_index=False)["ESTAB"].sum()
+    multi_data[multi_data["NAICS2017_LABEL"] != "Total for all sectors"]
+    .groupby("NAICS2017_LABEL", as_index=False)["ESTAB"].sum()
     .sort_values("ESTAB", ascending=False)
 )
+
 fig_pie = px.pie(
     sector_totals,
-    values="ESTAB", names="NAICS2017_LABEL",
+    values="ESTAB",
+    names="NAICS2017_LABEL",
     title="Sector distribution"
 )
 st.plotly_chart(fig_pie, use_container_width=True)

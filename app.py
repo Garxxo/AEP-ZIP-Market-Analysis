@@ -141,7 +141,7 @@ st.subheader(f"🏆 Top 5 sectors in selected ZIPs ({len(final_selected_zips)})"
 top5_chart = (
     multi_data.groupby("NAICS2017_LABEL", as_index=False)["ESTAB"].sum()
     .sort_values("ESTAB", ascending=False)
-    .head(5)
+    .head(6)
 )
 fig_top5 = px.bar(
     top5_chart.sort_values("ESTAB"),

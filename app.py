@@ -5,12 +5,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 import json
 import numpy as np
-from streamlit_plotly_events import plotly_events
 
 st.set_page_config(page_title="AEP ZIP Market Analysis", layout="wide")
 
 st.title("📊 Appalachian Power – ZIP Code Market Analysis")
-st.caption("Explore establishments by sector across Virginia ZIP codes. Select ZIPs from the map or sidebar.")
+st.caption("Explore establishments by sector across Virginia ZIP codes. Select ZIPs from the sidebar to highlight them on the map.")
 
 # --- Paths ---
 FILE_PATH = "AEP_Zips_Processed.xlsx"
@@ -45,29 +44,12 @@ def load_geojson(path: str):
 
 geojson_data = load_geojson(GEOJSON_PATH)
 
-# --- Interactive Map ---
-st.subheader("🗺️ Interactive Map – Click ZIPs to select")
-
+# --- Prepare totals ---
 zip_totals = ee_map.groupby("ZIP", as_index=False)["ESTAB"].sum()
 zip_totals["ZIP"] = zip_totals["ZIP"].astype(str).str.zfill(5)
 zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
 
-fig_map = px.choropleth_mapbox(
-    zip_totals,
-    geojson=geojson_data,
-    locations="ZIP",
-    featureidkey="properties.ZCTA5CE20",
-    color="ESTAB_LOG",
-    hover_name="ZIP",
-    hover_data={"ESTAB": True, "ESTAB_LOG": False},
-    color_continuous_scale="YlOrRd",
-    mapbox_style="carto-positron",
-    center={"lat": 37.5, "lon": -79},
-    zoom=6,
-    opacity=0.6,
-)
-
-# Add ZIP labels from centroid coordinates
+# Extract centroid coordinates for labels
 zip_centroids = {}
 for feature in geojson_data["features"]:
     z = feature["properties"]["ZCTA5CE20"]
@@ -79,50 +61,61 @@ for feature in geojson_data["features"]:
 zip_totals["lon"] = zip_totals["ZIP"].map(lambda z: zip_centroids.get(z, (None, None))[0])
 zip_totals["lat"] = zip_totals["ZIP"].map(lambda z: zip_centroids.get(z, (None, None))[1])
 
-fig_map.add_trace(go.Scattermapbox(
-    lon=zip_totals["lon"],
-    lat=zip_totals["lat"],
-    text=zip_totals["ZIP"],
-    mode="text",
-    textfont=dict(size=11, color="black"),  # ZIPs más visibles
-    hoverinfo="none"
-))
-
-# 👇 ESTA es la única llamada al mapa (ya no hay st.plotly_chart duplicado)
-selected_points = plotly_events(fig_map, click_event=True, select_event=True)
-
-if "selected_zips" not in st.session_state:
-    st.session_state["selected_zips"] = []
-
-if selected_points:
-    selected_indices = [p["pointIndex"] for p in selected_points if "pointIndex" in p]
-    new_zips = zip_totals.iloc[selected_indices]["ZIP"].tolist()
-    st.session_state["selected_zips"].extend(new_zips)
-    st.session_state["selected_zips"] = list(set(st.session_state["selected_zips"]))  # únicos
-
-# --- Sidebar filters (synchronized) ---
+# --- Sidebar filters ---
 st.sidebar.header("Filters")
-
 all_names = sorted(ee_map["NAME"].dropna().unique())
-selected_names = ee_map[ee_map["ZIP"].isin(st.session_state["selected_zips"])]["NAME"].unique().tolist()
+sidebar_selection = st.sidebar.multiselect("Choose ZIP Codes", all_names)
 
-sidebar_selection = st.sidebar.multiselect(
-    "Choose ZIP Codes",
-    all_names,
-    default=selected_names
-)
+final_selected_zips = ee_map.loc[ee_map["NAME"].isin(sidebar_selection), "ZIP"].unique()
 
-# Update session state with sidebar changes
-sidebar_zip_codes = ee_map.loc[ee_map["NAME"].isin(sidebar_selection), "ZIP"].unique()
-st.session_state["selected_zips"] = list(sidebar_zip_codes)
-
-final_selected_zips = st.session_state["selected_zips"]
-
-if not final_selected_zips:
-    st.warning("Please select at least one ZIP (from map or sidebar).")
+if not len(final_selected_zips):
+    st.warning("Please select at least one ZIP from the sidebar.")
     st.stop()
 
 multi_data = ee_map[ee_map["ZIP"].isin(final_selected_zips)]
+
+# --- Map view ---
+st.subheader("🗺️ Map – Selected ZIPs highlighted")
+
+# Base map (all zips in gray)
+fig_map = px.choropleth_mapbox(
+    zip_totals,
+    geojson=geojson_data,
+    locations="ZIP",
+    featureidkey="properties.ZCTA5CE20",
+    color_discrete_sequence=["lightgray"],  # base in gray
+    mapbox_style="carto-positron",
+    center={"lat": 37.5, "lon": -79},
+    zoom=6,
+    opacity=0.3
+)
+
+# Overlay selected ZIPs with color scale
+selected_totals = zip_totals[zip_totals["ZIP"].isin(final_selected_zips)]
+
+fig_map.add_trace(go.Choroplethmapbox(
+    geojson=geojson_data,
+    locations=selected_totals["ZIP"],
+    z=selected_totals["ESTAB_LOG"],
+    featureidkey="properties.ZCTA5CE20",
+    colorscale="YlOrRd",
+    marker_opacity=0.7,
+    marker_line_width=0.5,
+    text=selected_totals["ZIP"],
+    hoverinfo="text+z"
+))
+
+# Add labels with ZIP codes
+fig_map.add_trace(go.Scattermapbox(
+    lon=selected_totals["lon"],
+    lat=selected_totals["lat"],
+    text=selected_totals["ZIP"],
+    mode="text",
+    textfont=dict(size=12, color="black"),  # larger and clear labels
+    hoverinfo="none"
+))
+
+st.plotly_chart(fig_map, use_container_width=True, height=700)
 
 # --- Top 5 sectors ---
 st.subheader(f"🏆 Top 5 sectors in selected ZIPs ({len(final_selected_zips)})")
@@ -189,10 +182,11 @@ with st.expander("ℹ️ About this app"):
     Provide Appalachian Power with a market sizing tool by ZIP code in Virginia.  
 
     **Features:**  
-    - Select ZIPs by clicking on the interactive map or via sidebar (synchronized).  
+    - Highlight ZIPs by selecting them in the sidebar.  
+    - Map shows all ZIPs in gray, with selected ZIPs highlighted in color.  
+    - ZIP numbers are printed on the map for easy reference.  
     - Compare top sectors and see aggregated tables.  
     - Visualize distribution with bar and pie charts.  
     - EE Opportunities table (if available in dataset).  
     - Heatmap-style table with option to export CSV.  
-    - Interactive choropleth map with ZIP labels and establishments per ZIP (logarithmic scale).  
     """)

@@ -4,11 +4,12 @@ import pandas as pd
 import plotly.express as px
 import json
 import numpy as np
+from streamlit_plotly_events import plotly_events
 
 st.set_page_config(page_title="AEP ZIP Market Analysis", layout="wide")
 
 st.title("📊 Appalachian Power – ZIP Code Market Analysis")
-st.caption("Explore establishments by sector across Virginia ZIP codes. Dataset preloaded.")
+st.caption("Explore establishments by sector across Virginia ZIP codes. Select ZIPs from the map or sidebar.")
 
 # --- Paths ---
 FILE_PATH = "AEP_Zips_Processed.xlsx"
@@ -43,105 +44,107 @@ def load_geojson(path: str):
 
 geojson_data = load_geojson(GEOJSON_PATH)
 
+# --- Map first ---
+st.subheader("🗺️ Interactive Map – Click ZIPs to select")
+
+zip_totals = ee_map.groupby("ZIP", as_index=False)["ESTAB"].sum()
+zip_totals["ZIP"] = zip_totals["ZIP"].astype(str).str.zfill(5)
+zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
+
+fig_map = px.choropleth_mapbox(
+    zip_totals,
+    geojson=geojson_data,
+    locations="ZIP",
+    featureidkey="properties.ZCTA5CE20",
+    color="ESTAB_LOG",
+    hover_name="ZIP",
+    hover_data={"ESTAB": True, "ESTAB_LOG": False},
+    color_continuous_scale="YlOrRd",
+    mapbox_style="carto-positron",
+    center={"lat": 37.5, "lon": -79},
+    zoom=6,
+    opacity=0.6,
+    title="Click ZIPs to select"
+)
+
+selected_points = plotly_events(fig_map, click_event=True, select_event=True)
+selected_zips_map = [p["location"] for p in selected_points] if selected_points else []
+
+st.plotly_chart(fig_map, use_container_width=True, height=700)
+
 # --- Sidebar filters ---
 st.sidebar.header("Filters")
 
 all_names = sorted(ee_map["NAME"].dropna().unique())
-select_all = st.sidebar.checkbox("Select/Deselect all ZIPs", value=False)
+sidebar_zips = st.sidebar.multiselect("Choose ZIP Codes (sidebar)", all_names)
+sidebar_zip_codes = ee_map.loc[ee_map["NAME"].isin(sidebar_zips), "ZIP"].unique() if sidebar_zips else []
 
-if select_all:
-    names_selected = st.sidebar.multiselect("Choose ZIP Codes", all_names, default=all_names)
-else:
-    names_selected = st.sidebar.multiselect("Choose ZIP Codes", all_names, default=[])
+# --- Combine selections ---
+final_selected_zips = list(set(selected_zips_map) | set(sidebar_zip_codes))
 
-if not names_selected:
-    st.warning("Please select at least one ZIP Code from the sidebar.")
-else:
-    selected_zips = ee_map.loc[ee_map["NAME"].isin(names_selected), "ZIP"].dropna().unique()
-    multi_data = ee_map[ee_map["ZIP"].isin(selected_zips)]
+if not final_selected_zips:
+    st.warning("Please select at least one ZIP (from map or sidebar).")
+    st.stop()
 
-    # --- Top 5 sectors bar chart ---
-    st.subheader("🏆 Top 5 sectors by establishments")
-    top5_chart = (
-        multi_data.groupby("NAICS2017_LABEL", as_index=False)["ESTAB"].sum()
+multi_data = ee_map[ee_map["ZIP"].isin(final_selected_zips)]
+
+# --- Top 5 sectors bar chart ---
+st.subheader(f"🏆 Top 5 sectors in selected ZIPs ({len(final_selected_zips)})")
+top5_chart = (
+    multi_data.groupby("NAICS2017_LABEL", as_index=False)["ESTAB"].sum()
+    .sort_values("ESTAB", ascending=False)
+    .head(5)
+)
+fig_top5 = px.bar(
+    top5_chart.sort_values("ESTAB"),
+    x="ESTAB", y="NAICS2017_LABEL",
+    orientation="h", text="ESTAB"
+)
+st.plotly_chart(fig_top5, use_container_width=True)
+
+# --- Pie chart distribution ---
+st.subheader(f"🥧 Sector distribution in selected ZIPs ({len(final_selected_zips)})")
+sector_totals = (
+    multi_data.groupby("NAICS2017_LABEL", as_index=False)["ESTAB"].sum()
+    .sort_values("ESTAB", ascending=False)
+)
+fig_pie = px.pie(
+    sector_totals,
+    values="ESTAB", names="NAICS2017_LABEL",
+    title="Sector distribution"
+)
+st.plotly_chart(fig_pie, use_container_width=True)
+
+# --- EE Opportunities ---
+st.subheader("⚡ EE Opportunities by sector (selected ZIPs)")
+if "EE_Opportunity" in multi_data.columns:
+    ee_summary = (
+        multi_data.groupby(["NAICS2017_LABEL", "EE_Opportunity"], as_index=False)["ESTAB"].sum()
         .sort_values("ESTAB", ascending=False)
-        .head(6)
     )
-    fig_top5 = px.bar(
-        top5_chart.sort_values("ESTAB"),
-        x="ESTAB", y="NAICS2017_LABEL",
-        orientation="h", text="ESTAB"
-    )
-    st.plotly_chart(fig_top5, use_container_width=True)
+    st.dataframe(ee_summary, use_container_width=True)
+else:
+    st.info("No EE mapping available in this dataset.")
 
-    # --- Pie chart distribution ---
-    st.subheader("🥧 Sector distribution (all sectors in ZIP)")
-    sector_totals = (
-        multi_data.groupby("NAICS2017_LABEL", as_index=False)["ESTAB"].sum()
-        .sort_values("ESTAB", ascending=False)
-    )
-    fig_pie = px.pie(
-        sector_totals,
-        values="ESTAB", names="NAICS2017_LABEL",
-        title="Sector distribution"
-    )
-    st.plotly_chart(fig_pie, use_container_width=True)
+# --- Heatmap table by ZIP and Sector ---
+st.subheader("🔥 Establishments by ZIP and Sector (selected ZIPs)")
+heatmap_data = pd.pivot_table(
+    multi_data,
+    values="ESTAB",
+    index="NAME",
+    columns="NAICS2017_LABEL",
+    aggfunc="sum",
+    fill_value=0
+)
+st.dataframe(heatmap_data, use_container_width=True)
 
-    # --- EE Opportunities ---
-    st.subheader("⚡ EE Opportunities by sector")
-    if "EE_Opportunity" in multi_data.columns:
-        ee_summary = (
-            multi_data.groupby(["NAICS2017_LABEL", "EE_Opportunity"], as_index=False)["ESTAB"].sum()
-            .sort_values("ESTAB", ascending=False)
-        )
-        st.dataframe(ee_summary, use_container_width=True)
-    else:
-        st.info("No EE mapping available in this dataset.")
-
-    # --- Heatmap table by ZIP and Sector ---
-    st.subheader("🔥 Heatmap preview — Establishments by ZIP and Sector (scrollable table)")
-    heatmap_data = pd.pivot_table(
-        multi_data,
-        values="ESTAB",
-        index="NAME",
-        columns="NAICS2017_LABEL",
-        aggfunc="sum",
-        fill_value=0
-    )
-    st.dataframe(heatmap_data, use_container_width=True)
-
-    # Download CSV
-    csv_data = heatmap_data.to_csv().encode("utf-8")
-    st.download_button(
-        "Download selected ZIP data (CSV)",
-        data=csv_data,
-        file_name="zip_sector_data.csv",
-        mime="text/csv"
-    )
-
-    # --- Map view ---
-    st.subheader("🗺️ Map view – Establishments by ZIP")
-
-    zip_totals = multi_data.groupby("ZIP", as_index=False)["ESTAB"].sum()
-    zip_totals["ZIP"] = zip_totals["ZIP"].astype(str).str.zfill(5)
-    zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
-
-    fig_map = px.choropleth_mapbox(
-        zip_totals,
-        geojson=geojson_data,
-        locations="ZIP",
-        featureidkey="properties.ZCTA5CE20",
-        color="ESTAB_LOG",
-        hover_name="ZIP",
-        hover_data={"ESTAB": True, "ESTAB_LOG": False},
-        color_continuous_scale="YlOrRd",
-        mapbox_style="carto-positron",
-        center={"lat": 37.5, "lon": -79},
-        zoom=6,
-        opacity=0.6,
-        title="Total establishments by ZIP (log scale)"
-    )
-    st.plotly_chart(fig_map, use_container_width=True, height=700)
+csv_data = heatmap_data.to_csv().encode("utf-8")
+st.download_button(
+    "Download selected ZIP data (CSV)",
+    data=csv_data,
+    file_name="zip_sector_data.csv",
+    mime="text/csv"
+)
 
 # --- Footer ---
 with st.expander("ℹ️ About this app"):
@@ -150,11 +153,10 @@ with st.expander("ℹ️ About this app"):
     Provide Appalachian Power with a market sizing tool by ZIP code in Virginia.  
 
     **Features:**  
-    - Select one or multiple ZIPs in the sidebar (with Select/Deselect all option).  
+    - Select ZIPs by clicking on the interactive map or via sidebar.  
     - Compare top sectors and see aggregated tables.  
     - Visualize distribution with bar and pie charts.  
     - EE Opportunities table (if available in dataset).  
     - Heatmap-style table with option to export CSV.  
     - Interactive choropleth map with establishments per ZIP (logarithmic scale).  
     """)
-

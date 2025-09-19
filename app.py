@@ -112,7 +112,7 @@ import geopandas as gpd
 def load_shapes():
     # Puedes bajar un shapefile de TIGER/Line ZIP Code Tabulation Areas
     # Ejemplo: tl_2023_us_zcta520.zip
-    shp_path = "tl_2023_us_zcta520.zip"  # ponlo en tu repo
+    shp_path = "VA_Zip_Codes.zip"  # ponlo en tu repo
     gdf = gpd.read_file(shp_path)
     gdf["ZCTA5CE20"] = gdf["ZCTA5CE20"].astype(str)
     return gdf

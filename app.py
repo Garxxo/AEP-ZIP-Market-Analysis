@@ -63,82 +63,82 @@ else:
     # --- Multi-ZIP comparison ---
     st.subheader("📊 Multi-ZIP comparison")
 
-    # Convertir nombres seleccionados a ZIPs y filtrar
-    selected_zips = ee_map.loc[ee_map["NAME"].isin(names_selected), "ZIP"].unique()
-    multi_data = ee_map[ee_map["ZIP"].isin(selected_zips)]
+    # Convertir directamente a ZIP desde los nombres seleccionados
+    selected_zips = ee_map.loc[ee_map["NAME"].isin(names_selected), "ZIP"].dropna().unique()
+    if len(selected_zips) == 0:
+        st.error("⚠️ No ZIP codes found for the selected entries. Check Excel column NAME vs sidebar.")
+    else:
+        multi_data = ee_map[ee_map["ZIP"].isin(selected_zips)]
 
-    # Tabla de sectores agregados
-    sector_totals_multi = (
-        multi_data.groupby("NAICS2017_LABEL", as_index=False)["ESTAB"].sum()
-        .sort_values("ESTAB", ascending=False)
-    )
+        # Tabla de sectores agregados
+        sector_totals_multi = (
+            multi_data.groupby("NAICS2017_LABEL", as_index=False)["ESTAB"].sum()
+            .sort_values("ESTAB", ascending=False)
+        )
 
-    fig_multi = px.bar(
-        sector_totals_multi.head(10).sort_values("ESTAB"),
-        x="ESTAB", y="NAICS2017_LABEL",
-        orientation="h", text="ESTAB",
-        title=f"Top sectors across selected ZIPs ({len(selected_zips)} total)"
-    )
-    st.plotly_chart(fig_multi, use_container_width=True)
+        fig_multi = px.bar(
+            sector_totals_multi.head(10).sort_values("ESTAB"),
+            x="ESTAB", y="NAICS2017_LABEL",
+            orientation="h", text="ESTAB",
+            title=f"Top sectors across selected ZIPs ({len(selected_zips)} total)"
+        )
+        st.plotly_chart(fig_multi, use_container_width=True)
 
-    st.markdown("#### Aggregated table for selected ZIPs")
-    st.dataframe(sector_totals_multi, use_container_width=True)
+        st.markdown("#### Aggregated table for selected ZIPs")
+        st.dataframe(sector_totals_multi, use_container_width=True)
 
-    # --- Interactive Map ---
-    st.subheader("🗺️ Map view – Establishments by ZIP")
+        # --- Interactive Map ---
+        st.subheader("🗺️ Map view – Establishments by ZIP")
 
-    # Aggregate totals by ZIP
-    zip_totals = multi_data.groupby("ZIP", as_index=False)["ESTAB"].sum()
-    zip_totals["ZIP"] = zip_totals["ZIP"].astype(str).str.zfill(5)
+        # Aggregate totals by ZIP
+        zip_totals = multi_data.groupby("ZIP", as_index=False)["ESTAB"].sum()
+        zip_totals["ZIP"] = zip_totals["ZIP"].astype(str).str.zfill(5)
 
-    # Crear copia del GeoJSON para no modificar el original
-    geojson_copy = {"type": geojson_data["type"], "features": []}
-    for feature in geojson_data["features"]:
-        f = feature.copy()
-        f["properties"]["ZIP_CODE"] = str(f["properties"]["ZIP_CODE"]).zfill(5)
-        geojson_copy["features"].append(f)
+        # Crear copia del GeoJSON para no modificar el original
+        geojson_copy = {"type": geojson_data["type"], "features": []}
+        for feature in geojson_data["features"]:
+            f = feature.copy()
+            f["properties"]["ZIP_CODE"] = str(f["properties"]["ZIP_CODE"]).zfill(5)
+            geojson_copy["features"].append(f)
 
-    # --- Validaciones antes de pintar ---
-    st.write("📊 ZIPs in zip_totals:", zip_totals["ZIP"].unique()[:20])
-    st.write("🌍 ZIPs in geojson_copy:", [f["properties"]["ZIP_CODE"] for f in geojson_copy["features"][:20]])
+        # Merge check para depuración
+        merged_check = pd.merge(
+            zip_totals,
+            pd.DataFrame([f["properties"] for f in geojson_copy["features"]]),
+            left_on="ZIP",
+            right_on="ZIP_CODE",
+            how="outer",
+            indicator=True
+        )
+        st.write("🔎 Merge check sample:", merged_check.head(20))
 
-    merged_check = pd.merge(
-        zip_totals,
-        pd.DataFrame([f["properties"] for f in geojson_copy["features"]]),
-        left_on="ZIP",
-        right_on="ZIP_CODE",
-        how="outer",
-        indicator=True
-    )
-    st.write("🔎 Merge check sample:", merged_check.head(20))
+        # Filtrar ZIPs presentes en el DataFrame
+        valid_zips = set(zip_totals["ZIP"])
+        geojson_copy["features"] = [
+            f for f in geojson_copy["features"] if f["properties"]["ZIP_CODE"] in valid_zips
+        ]
 
-    # Filtrar ZIPs presentes en el DataFrame
-    valid_zips = set(zip_totals["ZIP"])
-    geojson_copy["features"] = [
-        f for f in geojson_copy["features"] if f["properties"]["ZIP_CODE"] in valid_zips
-    ]
+        # Escala logarítmica
+        zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
 
-    # Escala logarítmica
-    zip_totals["ESTAB_LOG"] = np.log1p(zip_totals["ESTAB"])
+        # Mapa
+        fig_map = px.choropleth_mapbox(
+            zip_totals,
+            geojson=geojson_copy,
+            locations="ZIP",
+            featureidkey="properties.ZIP_CODE",
+            color="ESTAB_LOG",
+            hover_name="ZIP",
+            hover_data={"ESTAB": True, "ESTAB_LOG": False},
+            color_continuous_scale="YlOrRd",
+            mapbox_style="carto-positron",
+            center={"lat": 37.5, "lon": -79},
+            zoom=6,
+            opacity=0.6,
+            title="Total establishments by ZIP (log scale)"
+        )
 
-    # Mapa
-    fig_map = px.choropleth_mapbox(
-        zip_totals,
-        geojson=geojson_copy,
-        locations="ZIP",
-        featureidkey="properties.ZIP_CODE",
-        color="ESTAB_LOG",
-        hover_name="ZIP",
-        hover_data={"ESTAB": True, "ESTAB_LOG": False},
-        color_continuous_scale="YlOrRd",
-        mapbox_style="carto-positron",
-        center={"lat": 37.5, "lon": -79},
-        zoom=6,
-        opacity=0.6,
-        title="Total establishments by ZIP (log scale)"
-    )
-
-    st.plotly_chart(fig_map, use_container_width=True, height=700)
+        st.plotly_chart(fig_map, use_container_width=True, height=700)
 
 # --- Footer ---
 with st.expander("ℹ️ About this app"):

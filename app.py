@@ -61,16 +61,29 @@ zip_totals["lat"] = zip_totals["ZIP"].map(lambda z: zip_centroids.get(z, (None, 
 
 # --- Sidebar filters ---
 st.sidebar.header("Filters")
+
 all_names = sorted(ee_map["NAME"].dropna().unique())
-sidebar_selection = st.sidebar.multiselect("Choose ZIP Codes", all_names)
+
+# Checkbox para seleccionar/deseleccionar todos
+select_all = st.sidebar.checkbox("Select/Deselect all ZIPs", value=False)
+
+if select_all:
+    sidebar_selection = st.sidebar.multiselect(
+        "Choose ZIP Codes",
+        all_names,
+        default=all_names
+    )
+else:
+    sidebar_selection = st.sidebar.multiselect(
+        "Choose ZIP Codes",
+        all_names
+    )
 
 final_selected_zips = ee_map.loc[ee_map["NAME"].isin(sidebar_selection), "ZIP"].unique()
 
 if not len(final_selected_zips):
     st.warning("Please select at least one ZIP from the sidebar.")
     st.stop()
-
-multi_data = ee_map[ee_map["ZIP"].isin(final_selected_zips)]
 
 # --- Map view ---
 st.subheader("🗺️ Map – Selected ZIPs highlighted")
